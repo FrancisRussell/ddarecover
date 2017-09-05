@@ -45,6 +45,10 @@ impl MapFile {
         Ok(())
     }
 
+    pub fn get_size_bytes(&self) -> u64 {
+        (self.block_size as u64) * (self.sector_states.len() as u64)
+    }
+
     pub fn read_from_stream<R>(read: R) -> io::Result<MapFile> where R: Read {
         let buf_reader = BufReader::new(read);
         let block_size = BLOCK_SIZE;

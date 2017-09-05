@@ -64,6 +64,10 @@ impl BlockDevice {
         Ok(self.num_blocks)
     }
 
+    pub fn get_size_bytes(&self) -> Result<u64, nix::Error> {
+        Ok(self.num_blocks as u64 * self.block_size as u64)
+    }
+
     fn fail_errno<T>() -> Result<T, Box<Error>> {
         Err(Box::new(nix::Error::last()))
     }
