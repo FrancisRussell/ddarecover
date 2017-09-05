@@ -1,0 +1,8 @@
+[package]
+name = "ddarecover"
+version = "0.1.0"
+authors = ["Francis Russell <francis@unchartedbackwaters.co.uk>"]
+
+[dependencies]
+libc = "0.2.30"
+nix = "0.9.0"
