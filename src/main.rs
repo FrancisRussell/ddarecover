@@ -1,7 +1,6 @@
 extern crate ddarecover;
 
 use std::fs::File;
-use std::io;
 use ddarecover::map_file::MapFile;
 use ddarecover::block::BlockDevice;
 use std::error::Error;

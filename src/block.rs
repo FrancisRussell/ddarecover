@@ -1,13 +1,16 @@
-use libc::{self, c_int, c_uint, c_ulong};
+use libc::{self, c_int, c_uint};
 use nix;
 use std::ffi::CString;
 use std::error::Error;
+use libaio::{self, aio_context_t};
+use std::ptr;
 
 #[derive(Debug)]
 pub struct BlockDevice {
     fd: c_int,
     block_size: usize,
     num_blocks: u64,
+    context: aio_context_t,
 }
 
 mod ioctl {
@@ -16,6 +19,8 @@ mod ioctl {
     pub const GETSIZE64: c_uint = 114;
     pub const PBSZGET: c_uint = 123;
 }
+
+const MAX_EVENTS: c_int = 20;
 
 impl BlockDevice {
     pub fn open(path: &str) -> Result<BlockDevice, Box<Error>> {
@@ -36,10 +41,17 @@ impl BlockDevice {
         }
         let num_blocks = size_bytes / (block_size as u64);
         assert_eq!(size_bytes % (block_size as u64), 0, "Device size is not multiple of block size!");
+
+        let mut context: aio_context_t = ptr::null_mut();
+        if unsafe { libaio::io_setup(MAX_EVENTS, &mut context as *mut aio_context_t) } == -1 {
+            return Self::fail_errno();
+        }
+
         let result = BlockDevice {
             fd: fd,
             block_size: block_size as usize,
             num_blocks: num_blocks,
+            context: context,
         };
         Ok(result)
     }
@@ -59,6 +71,9 @@ impl BlockDevice {
 
 impl Drop for BlockDevice {
     fn drop(&mut self) {
-        unsafe { libc::close(self.fd) };
+        unsafe {
+            libaio::io_destroy(self.context);
+            libc::close(self.fd)
+        };
     }
 }
