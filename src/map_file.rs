@@ -1,9 +1,12 @@
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
-const BLOCK_SIZE: usize = 512;
+use tagged_range::{self, TaggedRange};
+use std::error::Error;
+use std::fmt::{self, Display};
+use std::cmp;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
-enum SectorState {
+pub enum SectorState {
     Untried = b'?',
     Untrimmed = b'*',
     Unscraped = b'/',
@@ -12,50 +15,66 @@ enum SectorState {
 }
 
 #[derive(Debug)]
+pub struct ParseSectorStateError {
+}
+
+impl Display for ParseSectorStateError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.description())
+    }
+}
+
+impl Error for ParseSectorStateError {
+    fn description(&self) -> &str {
+        "Unknown character when parsing sector state."
+    }
+}
+
+impl SectorState {
+    pub fn from_u8(c: u8) -> Result<SectorState, ParseSectorStateError> {
+        use self::SectorState::*;
+        for state in [Untried, Untrimmed, Unscraped, Bad, Rescued].iter() {
+            if c == *state as u8 {
+                return Ok(state.clone())
+            }
+        }
+        Err(ParseSectorStateError{})
+    }
+
+    pub fn as_char(&self) -> char {
+        *self as u8 as char
+    }
+}
+
+#[derive(Debug)]
 pub struct MapFile {
     pos: u64,
     status: u8,
-    block_size: usize,
-    sector_states: Vec<u8>,
+    size_bytes: u64,
+    sector_states: TaggedRange<SectorState>,
 }
 
 impl MapFile {
     pub fn write_to_stream<W: Write>(&self, write: W) -> io::Result<()> {
         let mut write = BufWriter::new(write);
         writeln!(&mut write, "0x{:08X}     {}", self.pos, self.status as char)?;
-        let mut current = None;
-        let mut size = 0;
-        let mut start = 0;
-
-        for (idx, state) in self.sector_states.iter().enumerate() {
-            if current == Some(*state) {
-                size += self.block_size;
-            } else {
-                if size > 0 {
-                    writeln!(&mut write, "0x{:08X}  0x{:08X}  {}", start, size, current.unwrap() as char)?;
-                }
-                start = idx * self.block_size;
-                size = self.block_size;
-                current = Some(*state);
-            }
-        }
-        if size > 0 {
-            writeln!(&mut write, "0x{:08X}  0x{:08X}  {}", start, size, current.unwrap() as char)?;
+        for region in self.sector_states.into_iter() {
+            writeln!(&mut write, "0x{:08X}  0x{:08X}  {}", region.start, region.length, region.tag.as_char())?;
         }
         Ok(())
     }
 
     pub fn get_size_bytes(&self) -> u64 {
-        (self.block_size as u64) * (self.sector_states.len() as u64)
+        self.size_bytes
     }
 
     pub fn read_from_stream<R>(read: R) -> io::Result<MapFile> where R: Read {
         let buf_reader = BufReader::new(read);
-        let block_size = BLOCK_SIZE;
         let mut read_state = false;
         let mut pos = None;
         let mut status = None;
-        let mut states = Vec::new();
+        let mut sector_states = TaggedRange::new();
+        let mut size_bytes = 0;
 
         for line in buf_reader.lines() {
             let line = line?;
@@ -73,27 +92,28 @@ impl MapFile {
                 let mut iter = line.split_whitespace();
                 let pos = u64::from_str_radix(&iter.next().unwrap()[2..], radix).unwrap();
                 let size = u64::from_str_radix(&iter.next().unwrap()[2..], radix).unwrap();
-                let state = iter.next().unwrap().chars().next().unwrap() as u8;
-
-                states.resize(((size + pos) / (block_size as u64)) as usize, SectorState::Untried as u8);
-                assert_eq!((size + pos) % (block_size as u64), 0);
-                let start = pos / (block_size as u64);
-                assert_eq!(start * (block_size as u64), pos);
-                let count = size / (block_size as u64);
-                assert_eq!(count * (block_size as u64), size);
-                for i in start..(start + count) {
-                    states[i as usize] = state;
-                }
+                let state = SectorState::from_u8(iter.next().unwrap().chars().next().unwrap() as u8).unwrap();
+                sector_states.put(pos..(pos+size), state);
+                size_bytes = cmp::max(size_bytes, pos + size);
             }
         }
 
         let result = MapFile {
             pos: pos.unwrap(),
             status: status.unwrap(),
-            block_size: block_size,
-            sector_states: states,
+            sector_states: sector_states,
+            size_bytes: size_bytes,
         };
         Ok(result)
+    }
+}
+
+impl<'a> IntoIterator for &'a MapFile {
+    type IntoIter = <&'a TaggedRange<SectorState> as IntoIterator>::IntoIter;
+    type Item = tagged_range::Region<SectorState>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.sector_states.into_iter()
     }
 }
 
