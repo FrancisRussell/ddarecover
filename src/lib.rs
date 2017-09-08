@@ -6,3 +6,4 @@ extern crate nix;
 pub mod block;
 pub mod libaio;
 pub mod map_file;
+pub mod tagged_range;
