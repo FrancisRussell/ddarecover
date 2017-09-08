@@ -5,6 +5,7 @@ use std::ffi::CString;
 use std::error::Error;
 use libaio::{self, aio_context_t, io_event, iocb};
 use std::ptr;
+use std::slice;
 
 const MAX_EVENTS: c_int = 32;
 
@@ -61,6 +62,14 @@ impl Request {
         }
     }
 
+    pub fn get_data(&self) -> &[u8] {
+        if self.result < 0 {
+            &[]
+        } else {
+            &self.buffer.as_slice()[0..(self.result as usize)]
+        }
+    }
+
     pub fn reclaim_buffer(self) -> Buffer {
         self.buffer
     }
@@ -76,6 +85,13 @@ pub struct Buffer {
 impl Buffer {
     pub fn len(&self) -> usize {
         self.size
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe {
+            let data = self.data as *const u8;
+            slice::from_raw_parts(data, self.size)
+        }
     }
 }
 

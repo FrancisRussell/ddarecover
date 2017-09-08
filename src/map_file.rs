@@ -4,6 +4,8 @@ use std::error::Error;
 use std::fmt::{self, Display};
 use std::cmp;
 use std::ops::Range;
+use std::path::Path;
+use std::fs::{self, OpenOptions};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -65,6 +67,22 @@ impl MapFile {
         Ok(())
     }
 
+    pub fn write_to_path(&self, path: &Path) -> io::Result<()> {
+        let mut tmp_path = path.to_path_buf();
+        tmp_path.set_extension("ddarescue-tmp");
+        {
+            let mut file = OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .open(&tmp_path)?;
+            self.write_to_stream(&mut file)?;
+            file.flush()?;
+            file.sync_all()?;
+        }
+        fs::rename(tmp_path, path)?;
+        Ok(())
+    }
+
     pub fn get_size_bytes(&self) -> u64 {
         self.size_bytes
     }
@@ -108,12 +126,39 @@ impl MapFile {
         Ok(result)
     }
 
+    pub fn new(size_bytes: u64) -> MapFile {
+        let mut sector_states = TaggedRange::new();
+        sector_states.put(0..size_bytes, SectorState::Untried);
+        MapFile {
+            pos: 0,
+            status: b'?',
+            size_bytes: size_bytes,
+            sector_states: sector_states,
+        }
+    }
+
+    pub fn put(&mut self, range: Range<u64>, state: SectorState) {
+        self.sector_states.put(range, state);
+    }
+
     pub fn iter<'a>(&'a self) -> tagged_range::Iter<'a, SectorState> {
         self.into_iter()
     }
 
     pub fn iter_range<'a>(&'a self, range: Range<u64>) -> tagged_range::Iter<'a, SectorState> {
         self.sector_states.iter_range(range)
+    }
+
+    pub fn get_pos(&self) -> u64 {
+        self.pos
+    }
+
+    pub fn set_pos(&mut self, pos: u64) {
+        self.pos = pos;
+    }
+
+    pub fn get_size(&self) -> u64 {
+        self.size_bytes
     }
 }
 
