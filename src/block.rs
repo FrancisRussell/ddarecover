@@ -6,7 +6,7 @@ use std::error::Error;
 use libaio::{self, aio_context_t, io_event, iocb};
 use std::ptr;
 
-const MAX_EVENTS: c_int = 20;
+const MAX_EVENTS: c_int = 32;
 
 // Meaning of block/sector sizes:
 //
@@ -44,10 +44,10 @@ mod ioctl {
 
 #[derive(Debug)]
 pub struct Request {
-    offset: u64,
-    size: u64,
-    buffer: Buffer,
-    result: isize,
+    pub offset: u64,
+    pub size: u64,
+    pub buffer: Buffer,
+    pub result: isize,
 }
 
 impl Request {
@@ -59,6 +59,10 @@ impl Request {
             buffer: buffer,
             result: -1,
         }
+    }
+
+    pub fn reclaim_buffer(self) -> Buffer {
+        self.buffer
     }
 }
 
@@ -137,8 +141,8 @@ impl BlockDevice {
         assert!(self.requests_avail() > 0);
         let slot = self.find_slot();
         let iocb = &mut self.iocbs[slot];
+        iocb.0 = true;
         libaio::io_prep_pread(&mut iocb.1, self.fd as u32, req.buffer.data, req.size, req.offset as i64);
-        iocb.1.key = 42;
         let iocb_ptr = &mut iocb.1 as *mut iocb;
         let mut iocb_list = [iocb_ptr];
         //let iocb_list = &mut iocb_ptr as *mut *mut iocb;
@@ -159,15 +163,20 @@ impl BlockDevice {
         let res = unsafe {
             libaio::io_getevents(self.context, 1, 1, &mut event as *mut io_event, ptr::null_mut())
         };
-        for (idx, &mut (ref mut used, ref mut cb)) in self.iocbs.iter_mut().enumerate() {
-            if event.obj == cb as *mut iocb as u64 {
-                *used = false;
-                let mut req = self.requests.remove(&idx).unwrap();
-                req.result = event.res as isize;
-                return Ok(req);
+        if res < 0 {
+            let errno = nix::Errno::from_i32(-res as i32);
+            Err(nix::Error::Sys(errno))
+        } else {
+            for (idx, &mut (ref mut used, ref mut cb)) in self.iocbs.iter_mut().enumerate() {
+                if event.obj == cb as *mut iocb as u64 {
+                    *used = false;
+                    let mut req = self.requests.remove(&idx).unwrap();
+                    req.result = event.res as isize;
+                    return Ok(req);
+                }
             }
+            panic!("Couldn't find iocb for completed request!");
         }
-        panic!("Couldn't find iocb for completed request!");
     }
 
     fn find_slot(&self) -> usize {
@@ -179,16 +188,16 @@ impl BlockDevice {
         panic!("No free slot");
     }
 
-    pub fn get_block_size_physical(&self) -> Result<usize, nix::Error> {
-        Ok(self.block_size_physical)
+    pub fn get_block_size_physical(&self) -> usize {
+        self.block_size_physical
     }
 
-    pub fn get_sector_size(&self) -> Result<usize, nix::Error> {
-        Ok(self.sector_size)
+    pub fn get_sector_size(&self) -> usize {
+        self.sector_size
     }
 
-    pub fn get_size_bytes(&self) -> Result<u64, nix::Error> {
-        Ok(self.size_bytes)
+    pub fn get_size_bytes(&self) -> u64 {
+        self.size_bytes
     }
 
     fn fail_errno() -> nix::Error {

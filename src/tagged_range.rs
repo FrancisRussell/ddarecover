@@ -1,5 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{btree_map, BTreeMap};
 use std::ops::Range;
+use std::cmp;
 
 #[derive(Clone, Debug)]
 pub struct TaggedRange<T> {
@@ -45,13 +46,8 @@ impl<T> TaggedRange<T> {
         if range.end == range.start {
             return;
         }
-        let mut overlaps: Vec<u64> = self.starts.range(range.clone()).map(|(idx, _)| *idx).collect();
-        match self.starts.range(0..range.start).rev().next() {
-            Some((start, region)) => if start + region.length > range.start {
-                overlaps.push(*start);
-            },
-            None => {},
-        };
+        let covering_range = self.get_covering_range(&range);
+        let overlaps: Vec<u64> = self.starts.range(covering_range).map(|(idx, _)| *idx).collect();
         for start in overlaps.iter().cloned() {
             let region = self.starts.remove(&start).unwrap();
             if start < range.start {
@@ -77,6 +73,31 @@ impl<T> TaggedRange<T> {
         };
         self.starts.insert(range.start, new_region);
     }
+
+    fn get_covering_range(&self, range: &Range<u64>) -> Range<u64> {
+        let start = match self.starts.range(0..range.start).rev().next() {
+            Some((start, region)) => if *start + region.length > range.start {
+                *start
+            } else {
+                range.start
+            },
+            None => range.start,
+        };
+        start..range.end
+    }
+
+    pub fn iter<'a>(&'a self) -> Iter<'a, T> where T: Clone {
+        self.into_iter()
+    }
+
+    pub fn iter_range<'a>(&'a self, range: Range<u64>) -> Iter<'a, T> where T: Clone {
+        let covering_range = self.get_covering_range(&range);
+        let iter = self.starts.range(covering_range);
+        Iter {
+            range: range.clone(),
+            iter: iter,
+        }
+    }
 }
 
 impl<'a, T> IntoIterator for &'a TaggedRange<T> where T: Clone {
@@ -84,14 +105,18 @@ impl<'a, T> IntoIterator for &'a TaggedRange<T> where T: Clone {
     type IntoIter = Iter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
+        let iter = self.starts.range(..);
+        let range = 0..u64::max_value();
         Iter {
-            iter: self.starts.iter(),
+            range: range,
+            iter: iter,
         }
     }
 }
 
 pub struct Iter<'a, T> where T: 'a {
-    iter: <&'a BTreeMap<u64, InternalRegion<T>> as IntoIterator>::IntoIter,
+    range: Range<u64>,
+    iter: btree_map::Range<'a, u64, InternalRegion<T>>,
 }
 
 impl<'a, T> Iterator for Iter<'a, T> where T: Clone {
@@ -99,11 +124,16 @@ impl<'a, T> Iterator for Iter<'a, T> where T: Clone {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.iter.next() {
-            Some((start, iregion)) => Some(Region {
-                start: *start,
-                length: iregion.length,
-                tag: iregion.tag.clone(),
-            }),
+            Some((start, iregion)) => {
+                let start_restricted = cmp::max(*start, self.range.start);
+                let end_restricted = cmp::min(start + iregion.length, self.range.end);
+                let region = Region {
+                    start: start_restricted,
+                    length: end_restricted - start_restricted,
+                    tag: iregion.tag.clone(),
+                };
+                Some(region)
+            },
             None => None
         }
     }

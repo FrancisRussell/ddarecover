@@ -3,6 +3,7 @@ use tagged_range::{self, TaggedRange};
 use std::error::Error;
 use std::fmt::{self, Display};
 use std::cmp;
+use std::ops::Range;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -105,6 +106,14 @@ impl MapFile {
             size_bytes: size_bytes,
         };
         Ok(result)
+    }
+
+    pub fn iter<'a>(&'a self) -> tagged_range::Iter<'a, SectorState> {
+        self.into_iter()
+    }
+
+    pub fn iter_range<'a>(&'a self, range: Range<u64>) -> tagged_range::Iter<'a, SectorState> {
+        self.sector_states.iter_range(range)
     }
 }
 
