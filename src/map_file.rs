@@ -6,8 +6,9 @@ use std::cmp;
 use std::ops::Range;
 use std::path::Path;
 use std::fs::{self, OpenOptions};
+use std::collections::HashMap;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
 pub enum SectorState {
     Untried = b'?',
@@ -159,6 +160,14 @@ impl MapFile {
 
     pub fn get_size(&self) -> u64 {
         self.size_bytes
+    }
+
+    pub fn get_histogram(&self) -> HashMap<SectorState, u64> {
+        let mut result = HashMap::new();
+        for region in self.sector_states.iter() {
+            *result.entry(region.tag).or_insert(0) += region.length;
+        }
+        result
     }
 }
 
