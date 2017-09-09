@@ -1,21 +1,24 @@
-extern crate ddarecover;
 extern crate ansi_escapes;
 extern crate ctrlc;
+extern crate ddarecover;
+extern crate getopts;
 extern crate nix;
 
 use ddarecover::block::{BlockDevice, Buffer, Request};
 use ddarecover::map_file::{MapFile, SectorState};
 use ddarecover::out_file::OutFile;
+use getopts::Options;
+use std::env;
 use std::cmp;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
-use std::ops::Range;
-use std::time::Instant;
-use std::path::{Path, PathBuf};
 use std::io::{self, Seek, SeekFrom, Write};
-use std::collections::HashMap;
+use std::ops::Range;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
 const READ_BATCH_SIZE: usize = 32;
 const SYNC_INTERVAL: usize = 120;
@@ -302,12 +305,45 @@ impl Recover {
     }
 }
 
+fn print_usage(program: &str, opts: &Options) {
+    println!("{}", opts.usage(&format!("Usage: {} -i input_device -o output_file -m map_file", program)));
+}
+
 fn main() {
     do_work().unwrap();
 }
 
 fn do_work() -> Result<(), Box<Error>> {
-    let mut recover = Recover::new("/dev/sda", "./test.img", "./drive.map")?;
+    let args : Vec<String> = env::args().collect();
+    let program = &args[0];
+
+    let mut opts = Options::new();
+    opts.optflag("h", "help", "Show usage.");
+    opts.reqopt("i", "input", "Input device (required).", "FILE");
+    opts.reqopt("o", "output", "Output file (required).", "FILE");
+    opts.reqopt("m", "map", "Map file (required).", "FILE");
+
+    let matches = match opts.parse(&args[1..]) {
+        Ok(m) => { m }
+        Err(e) => {
+            println!("Error: {}", e.description());
+            print_usage(&program, &opts);
+            return Ok(())
+        },
+    };
+
+    let free_args = &matches.free;
+    let needed_args = 0;
+    if matches.opt_present("h") || free_args.len() != needed_args {
+        print_usage(&program, &opts);
+        return Ok(());
+    }
+
+    let input = matches.opt_str("i").unwrap();
+    let output = matches.opt_str("o").unwrap();
+    let map = matches.opt_str("m").unwrap();
+
+    let mut recover = Recover::new(input.as_str(), output.as_str(), map.as_str())?;
     recover.do_phase()?;
     Ok(())
 }
