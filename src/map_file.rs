@@ -38,6 +38,7 @@ impl SectorState {
 pub struct MapFile {
     pos: u64,
     status: Phase,
+    pass: usize,
     size_bytes: u64,
     sector_states: TaggedRange<SectorState>,
 }
@@ -45,7 +46,7 @@ pub struct MapFile {
 impl MapFile {
     pub fn write_to_stream<W: Write>(&self, write: W) -> io::Result<()> {
         let mut write = BufWriter::new(write);
-        writeln!(&mut write, "0x{:08X}     {}", self.pos, self.status.as_char())?;
+        writeln!(&mut write, "0x{:08X}     {}     {}", self.pos, self.status.as_char(), self.pass)?;
         for region in self.sector_states.into_iter() {
             writeln!(&mut write, "0x{:08X}  0x{:08X}  {}", region.start, region.length, region.tag.as_char())?;
         }
@@ -72,11 +73,24 @@ impl MapFile {
         self.size_bytes
     }
 
+    pub fn get_pass(&self) -> usize {
+        self.pass
+    }
+
+    pub fn set_pass(&mut self, pass: usize) {
+        self.pass = pass;
+    }
+
+    pub fn next_pass(&mut self) {
+        self.pass += 1;
+    }
+
     pub fn read_from_stream<R>(read: R) -> io::Result<MapFile> where R: Read {
         let buf_reader = BufReader::new(read);
         let mut read_state = false;
         let mut pos = None;
         let mut status = None;
+        let mut pass = None;
         let mut sector_states = TaggedRange::new();
         let mut size_bytes = 0;
 
@@ -91,6 +105,7 @@ impl MapFile {
                 let mut iter = line.split_whitespace();
                 pos = Some(u64::from_str_radix(&iter.next().unwrap()[2..], radix).unwrap());
                 status = Some(Phase::from_char(iter.next().unwrap().parse::<String>().unwrap().trim().chars().next().unwrap()).unwrap());
+                pass = Some(usize::from_str_radix(&iter.next().unwrap(), radix).unwrap());
                 read_state = true;
             } else {
                 let mut iter = line.split_whitespace();
@@ -105,6 +120,7 @@ impl MapFile {
         let result = MapFile {
             pos: pos.unwrap(),
             status: status.unwrap(),
+            pass: pass.unwrap(),
             sector_states: sector_states,
             size_bytes: size_bytes,
         };
@@ -119,6 +135,7 @@ impl MapFile {
             status: Phase::Copying,
             size_bytes: size_bytes,
             sector_states: sector_states,
+            pass: 1,
         }
     }
 

@@ -108,7 +108,7 @@ impl Recover {
             print!("{}", ansi_escapes::EraseLines(8));
         }
         println!("Press Ctrl+C to exit.\n");
-        println!("{:>15}: {:15}", "Phase", self.map_file.get_phase().name());
+        println!("{:>15}: {:15}", "Phase", format!("{} (pass {})", self.map_file.get_phase().name(), self.map_file.get_pass()));
         println!("{:>15}: {:15} {:>15}: {:15} {:>15}: {:15}",
                  "ipos", self.format_bytes(self.map_file.get_pos()),
                  "rescued", self.get_histogram_value_formatted(SectorState::Rescued),
@@ -207,12 +207,14 @@ impl Recover {
     }
 
     fn do_phase(&mut self) -> Result<(), Box<Error>> {
+        self.map_file.set_pass(1);
         match self.map_file.get_phase().target_sectors() {
             Some(phase_target) => {
                 while self.get_histogram_value(phase_target) > 0 && self.should_run() {
                     self.do_pass(&phase_target)?;
                     if self.is_pass_complete() {
                         self.map_file.set_pos(0);
+                        self.map_file.next_pass();
                     }
                 }
             },
@@ -237,6 +239,7 @@ impl Recover {
                 self.do_phase()?;
             }
         }
+        self.do_sync()?;
         Ok(())
     }
 
@@ -313,8 +316,6 @@ impl Recover {
                 .flat_map(|r| range_to_reads(&r.as_range(), &self.block))
                 .take(READ_BATCH_SIZE).collect();
 
-            let new_start_pos = reads.iter().map(|r| r.start).fold(self.map_file.get_size(), cmp::min);
-            self.map_file.set_pos(new_start_pos);
 
             pass_complete = reads.is_empty();
             while !reads.is_empty() && self.block.requests_avail() > 0 {
@@ -322,6 +323,8 @@ impl Recover {
                 let buffer = self.get_cleared_buffer();
                 let request = Request::new(read.start, read.end - read.start, buffer);
                 self.block.submit_request(request)?;
+                let new_start_pos = cmp::max(self.map_file.get_pos(), read.end);
+                self.map_file.set_pos(new_start_pos);
             }
 
             if self.block.requests_avail() == 0 {
@@ -337,7 +340,6 @@ impl Recover {
         while self.block.requests_pending() > 0 {
             self.try_drain_request(phase_target)?;
         }
-        self.do_sync()?;
         Ok(())
     }
 }
