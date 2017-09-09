@@ -6,7 +6,10 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::ops::Range;
 use std::path::Path;
+use std::str::FromStr;
 use tagged_range::{self, TaggedRange};
+use combine::{self, Stream, Parser};
+use std::error::Error;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
@@ -85,7 +88,7 @@ impl MapFile {
         self.pass += 1;
     }
 
-    pub fn read_from_stream<R>(read: R) -> io::Result<MapFile> where R: Read {
+    pub fn read_from_stream<R>(read: R) -> Result<MapFile, Box<Error>> where R: Read {
         let buf_reader = BufReader::new(read);
         let mut read_state = false;
         let mut pos = None;
@@ -100,18 +103,30 @@ impl MapFile {
                 continue;
             }
 
-            let radix = 16;
             if !read_state {
-                let mut iter = line.split_whitespace();
-                pos = Some(u64::from_str_radix(&iter.next().unwrap()[2..], radix).unwrap());
-                status = Some(Phase::from_char(iter.next().unwrap().parse::<String>().unwrap().trim().chars().next().unwrap()).unwrap());
-                pass = Some(usize::from_str_radix(&iter.next().unwrap(), radix).unwrap());
+                let mut parser = (combine::parser(Self::parse_hex_value),
+                              combine::skip_many1(combine::char::space()),
+                              combine::any().and_then(Phase::from_char),
+                              combine::skip_many1(combine::char::space()),
+                              combine::many1::<String, _>(combine::char::digit()).and_then(|x| usize::from_str(x.as_str()))
+                              );
+                let parsed = parser.parse(line.as_str()).map_err(|err| err.map_range(|s| s.to_string()))?.0;
+
+                pos = Some(parsed.0);
+                status = Some(parsed.2);
+                pass = Some(parsed.4);
                 read_state = true;
             } else {
-                let mut iter = line.split_whitespace();
-                let pos = u64::from_str_radix(&iter.next().unwrap()[2..], radix).unwrap();
-                let size = u64::from_str_radix(&iter.next().unwrap()[2..], radix).unwrap();
-                let state = SectorState::from_char(iter.next().unwrap().chars().next().unwrap()).unwrap();
+                let mut parser = (combine::parser(Self::parse_hex_value),
+                              combine::skip_many1(combine::char::space()),
+                              combine::parser(Self::parse_hex_value),
+                              combine::skip_many1(combine::char::space()),
+                              combine::any().and_then(SectorState::from_char)
+                              );
+                let parsed = parser.parse(line.as_str()).map_err(|err| err.map_range(|s| s.to_string()))?.0;
+                let pos = parsed.0;
+                let size = parsed.2;
+                let state = parsed.4;
                 sector_states.put(pos..(pos+size), state);
                 size_bytes = cmp::max(size_bytes, pos + size);
             }
@@ -177,6 +192,14 @@ impl MapFile {
             *result.entry(region.tag).or_insert(0) += region.length;
         }
         result
+    }
+
+    fn parse_hex_value<I: Stream<Item = char>>(input: I) -> combine::ParseResult<u64, I> {
+        let prefix = combine::char::string("0x");
+        let digits = combine::combinator::many1(combine::char::hex_digit());
+        let value = digits.and_then(|x: String| u64::from_str_radix(x.as_str(), 16));
+        let mut token = prefix.with(value);
+        token.parse_stream(input)
     }
 }
 

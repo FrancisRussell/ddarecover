@@ -3,6 +3,7 @@ name = "ddarecover"
 version = "0.1.0"
 dependencies = [
  "ansi-escapes 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "combine 3.0.0-alpha.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "ctrlc 3.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "getopts 0.2.15 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.30 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -15,14 +16,33 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "ascii"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "bitflags"
 version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "byteorder"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "cfg-if"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "combine"
+version = "3.0.0-alpha.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "ascii 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "ctrlc"
@@ -81,8 +101,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [metadata]
 "checksum ansi-escapes 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "163bff5f88583fe2d90e3002ea2a3b613c93b5e3eb84daf7fd539032e32a68b3"
+"checksum ascii 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)" = "3ae7d751998c189c1d4468cf0a39bb2eae052a9c58d50ebb3b9591ee3813ad50"
 "checksum bitflags 0.9.1 (registry+https://github.com/rust-lang/crates.io-index)" = "4efd02e230a02e18f92fc2735f44597385ed02ad8f831e7c1c1156ee5e1ab3a5"
+"checksum byteorder 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ff81738b726f5d099632ceaffe7fb65b90212e8dce59d518729e7e8634032d3d"
 "checksum cfg-if 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "d4c819a1287eb618df47cc647173c5c4c66ba19d888a6e50d605672aed3140de"
+"checksum combine 3.0.0-alpha.3 (registry+https://github.com/rust-lang/crates.io-index)" = "7042ed5b2ab0e5814aafa416b75882633d7347df1f102e3ab6b9f27f534a9cb5"
 "checksum ctrlc 3.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "1c663ee353d7e03e4f895af66ff7d3537f94c09deaa341a2f450684a3d45cb46"
 "checksum getopts 0.2.15 (registry+https://github.com/rust-lang/crates.io-index)" = "65922871abd2f101a2eb0eaebadc66668e54a87ad9c3dd82520b5f86ede5eff9"
 "checksum kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"

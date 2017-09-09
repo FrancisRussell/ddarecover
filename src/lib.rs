@@ -1,3 +1,4 @@
+extern crate combine;
 extern crate libc;
 
 #[macro_use]

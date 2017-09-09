@@ -5,6 +5,7 @@ authors = ["Francis Russell <francis@unchartedbackwaters.co.uk>"]
 
 [dependencies]
 ansi-escapes = "0.1.0"
+combine = "3.0.0-alpha.3"
 ctrlc = "3.0.2"
 getopts = "0.2.15"
 libc = "0.2.30"
