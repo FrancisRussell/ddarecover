@@ -147,9 +147,16 @@ impl Recover {
         self.print_status(false);
         while self.get_histogram_value(phase_target) > 0 && self.should_run() {
             self.do_pass()?;
-            self.map_file.set_pos(0);
+            if self.is_pass_complete() {
+                self.map_file.set_pos(0);
+            }
         }
         Ok(())
+    }
+
+    fn is_pass_complete(&self) -> bool {
+        (&self.map_file).iter_range(self.map_file.get_pos()..self.map_file.get_size())
+            .filter(|r| r.tag == self.phase_target).next().is_none()
     }
 
     fn get_cleared_buffer(&mut self) -> Buffer {
