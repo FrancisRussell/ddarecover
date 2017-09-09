@@ -320,6 +320,8 @@ impl Recover {
                 .flat_map(|r| range_to_reads(&r.as_range(), &self.block))
                 .take(READ_BATCH_SIZE).collect();
 
+            let new_start_pos = reads.iter().map(|r| r.start).fold(self.map_file.get_size(), cmp::min);
+            self.map_file.set_pos(new_start_pos);
 
             pass_complete = reads.is_empty();
             while !reads.is_empty() && self.block.requests_avail() > 0 {
@@ -327,8 +329,6 @@ impl Recover {
                 let buffer = self.get_cleared_buffer();
                 let request = Request::new(read.start, read.end - read.start, buffer);
                 self.block.submit_request(request)?;
-                let new_start_pos = cmp::max(self.map_file.get_pos(), read.end);
-                self.map_file.set_pos(new_start_pos);
             }
 
             if self.block.requests_avail() == 0 {
