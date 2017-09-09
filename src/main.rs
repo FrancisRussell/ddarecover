@@ -67,7 +67,7 @@ impl Recover {
 
     fn print_status(&self, overwrite: bool) {
         if overwrite {
-            print!("{}", ansi_escapes::EraseLines(4));
+            print!("{}", ansi_escapes::EraseLines(5));
         }
         println!("Press Ctrl+C to exit.");
         println!("{:>15}: {:15} {:>15}: {:15} {:>15}: {:15}",
@@ -79,6 +79,10 @@ impl Recover {
                  "non-tried", self.get_histogram_value_formatted(SectorState::Untried),
                  "non-trimmed", self.get_histogram_value_formatted(SectorState::Untrimmed),
                  "non-scraped", self.get_histogram_value_formatted(SectorState::Unscraped));
+
+        let now = Instant::now();
+        let run_time_seconds =  now.duration_since(self.start).as_secs();
+        println!("{:>15}: {:15}", "run time", self.format_seconds(run_time_seconds));
     }
 
     fn format_bytes(&self, bytes: u64) -> String {
@@ -92,6 +96,21 @@ impl Recover {
             }
         }
         format!("{:.1} {}", res_bytes, res_unit)
+    }
+
+    fn format_seconds(&self, seconds: u64) -> String {
+        let mut result = String::new();
+        let mut value = seconds;
+        for &(unit, multiple) in [("s", 60), ("m", 60), ("h", 24), ("d", usize::max_value())].iter() {
+            let multiple = multiple as u64;
+            result = format!(" {}{} {}", value % multiple, unit, result);
+            value /= multiple;
+
+            if value == 0 {
+                break;
+            }
+        }
+        result.trim().to_string()
     }
 
     fn get_histogram_value_formatted(&self, state: SectorState) -> String {
