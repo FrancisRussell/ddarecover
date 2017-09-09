@@ -2,6 +2,7 @@ use std::path::Path;
 use std::io::{self, Write, Seek, SeekFrom};
 use std::fs::{File, OpenOptions};
 
+#[derive(Debug)]
 pub struct OutFile {
     file: File,
 }
