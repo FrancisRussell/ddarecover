@@ -13,7 +13,6 @@ use std::path::{Path, PathBuf};
 use std::io::{self, Seek, SeekFrom, Write};
 use std::collections::HashMap;
 
-const NUM_BUFFERS: usize = 256;
 const READ_BATCH_SIZE: usize = 256;
 const SYNC_INTERVAL: usize = 60;
 
@@ -26,6 +25,7 @@ struct Recover {
     last_sync: Instant,
     histogram: HashMap<SectorState, u64>,
     phase_target: SectorState,
+    buffer_cache: Vec<Buffer>,
 }
 
 impl Recover {
@@ -54,6 +54,7 @@ impl Recover {
             last_sync: Instant::now(),
             histogram: histogram,
             phase_target: SectorState::Untried,
+            buffer_cache: Vec::new(),
         };
         Ok(result)
     }
@@ -136,14 +137,21 @@ impl Recover {
         Ok(())
     }
 
-    fn do_pass(&mut self) -> Result<(), Box<Error>> {
+    fn get_cleared_buffer(&mut self) -> Buffer {
         let sectors_per_buffer = self.block.get_block_size_physical() / self.block.get_sector_size();
-        let mut buffers: Vec<Buffer> = Vec::new();
-        for _ in 0..NUM_BUFFERS {
-            let buffer = self.block.create_io_buffer(sectors_per_buffer);
-            buffers.push(buffer);
-        }
+        let mut buffer = match self.buffer_cache.pop() {
+            Some(buffer) => buffer,
+            None => self.block.create_io_buffer(sectors_per_buffer),
+        };
+        buffer.clear();
+        buffer
+    }
 
+    fn recycle_buffer(&mut self, buffer: Buffer) {
+        self.buffer_cache.push(buffer)
+    }
+
+    fn do_pass(&mut self) -> Result<(), Box<Error>> {
         let mut pass_complete = false;
         while !pass_complete {
             let mut reads: Vec<Range<u64>> =
@@ -154,9 +162,9 @@ impl Recover {
 
             pass_complete = reads.is_empty();
             while !reads.is_empty() || self.block.requests_pending() > 0 {
-                while !reads.is_empty() && self.block.requests_avail() > 0 && !buffers.is_empty() {
+                while !reads.is_empty() && self.block.requests_avail() > 0 {
                     let read = reads.pop().unwrap();
-                    let mut buffer = buffers.pop().unwrap();
+                    let mut buffer = self.get_cleared_buffer();
                     buffer.clear();
                     let request = Request::new(read.start, read.end - read.start, buffer);
                     self.block.submit_request(request)?;
@@ -178,7 +186,7 @@ impl Recover {
                         self.update_histogram(request.size as u64, phase_target, SectorState::Bad);
                         self.map_file.put(request.offset..(request.offset + request.size), SectorState::Bad);
                     };
-                    buffers.push(request.reclaim_buffer());
+                    self.recycle_buffer(request.reclaim_buffer());
 
                     let now = Instant::now();
                     self.print_status(true);
