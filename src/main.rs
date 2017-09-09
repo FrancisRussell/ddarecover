@@ -50,7 +50,6 @@ struct Recover {
     last_sync: Instant,
     last_success: Option<Instant>,
     histogram: HashMap<SectorState, u64>,
-    phase_target: SectorState,
     buffer_cache: Vec<Buffer>,
     should_run_flag: Arc<AtomicBool>,
     stats: Stats,
@@ -83,7 +82,6 @@ impl Recover {
             last_sync: Instant::now(),
             last_success: None,
             histogram: histogram,
-            phase_target: SectorState::Untried,
             buffer_cache: Vec::new(),
             should_run_flag: should_run_flag.clone(),
             stats: Stats::new(),
@@ -107,9 +105,10 @@ impl Recover {
 
     fn print_status(&self, overwrite: bool) {
         if overwrite {
-            print!("{}", ansi_escapes::EraseLines(6));
+            print!("{}", ansi_escapes::EraseLines(8));
         }
-        println!("Press Ctrl+C to exit.");
+        println!("Press Ctrl+C to exit.\n");
+        println!("{:>15}: {:15}", "Phase", self.map_file.get_phase().name());
         println!("{:>15}: {:15} {:>15}: {:15} {:>15}: {:15}",
                  "ipos", self.format_bytes(self.map_file.get_pos()),
                  "rescued", self.get_histogram_value_formatted(SectorState::Rescued),
@@ -208,20 +207,59 @@ impl Recover {
     }
 
     fn do_phase(&mut self) -> Result<(), Box<Error>> {
-        let phase_target = self.phase_target;
+        match self.map_file.get_phase().target_sectors() {
+            Some(phase_target) => {
+                while self.get_histogram_value(phase_target) > 0 && self.should_run() {
+                    self.do_pass(&phase_target)?;
+                    if self.is_pass_complete() {
+                        self.map_file.set_pos(0);
+                    }
+                }
+            },
+            None => {},
+        }
+        Ok(())
+    }
+
+    fn do_phases(&mut self) -> Result<(), Box<Error>> {
         self.print_status(false);
-        while self.get_histogram_value(phase_target) > 0 && self.should_run() {
-            self.do_pass()?;
-            if self.is_pass_complete() {
-                self.map_file.set_pos(0);
+        let mut finished = false;
+        while !finished && self.should_run() {
+            if self.is_phase_complete() {
+                let current_phase = self.map_file.get_phase();
+                match current_phase.next() {
+                    Some(phase) => {
+                        self.map_file.set_phase(&phase);
+                    },
+                    None => finished = true,
+                }
+            } else {
+                self.do_phase()?;
             }
         }
         Ok(())
     }
 
     fn is_pass_complete(&self) -> bool {
-        (&self.map_file).iter_range(self.map_file.get_pos()..self.map_file.get_size())
-            .filter(|r| r.tag == self.phase_target).next().is_none()
+        let current_phase = self.map_file.get_phase();
+        match current_phase.target_sectors() {
+            Some(phase_target) => {
+                (&self.map_file).iter_range(self.map_file.get_pos()..self.map_file.get_size())
+                .filter(|r| r.tag == phase_target).next().is_none()
+            },
+            None => true,
+        }
+    }
+
+    fn is_phase_complete(&self) -> bool {
+        let current_phase = self.map_file.get_phase();
+        match current_phase.target_sectors() {
+            Some(phase_target) => {
+                (&self.map_file).iter_range(0..self.map_file.get_size())
+                .filter(|r| r.tag == phase_target).next().is_none()
+            },
+            None => true,
+        }
     }
 
     fn get_cleared_buffer(&mut self) -> Buffer {
@@ -238,7 +276,7 @@ impl Recover {
         self.buffer_cache.push(buffer)
     }
 
-    fn try_drain_request(&mut self) -> Result<(), Box<Error>> {
+    fn try_drain_request(&mut self, phase_target: &SectorState) -> Result<(), Box<Error>> {
         if self.block.requests_pending() > 0 {
             let request = match self.block.get_completed_request() {
                 Ok(r) => r,
@@ -246,19 +284,18 @@ impl Recover {
                 Err(err) => return Err(Box::new(err)),
             };
             self.stats.requests += 1;
-            let phase_target = self.phase_target;
             if request.result > 0 {
                 let request_result = request.result as u64;
                 if !request.is_data_zeros() {
                     self.out_file.seek(SeekFrom::Start(request.offset))?;
                     self.out_file.write_all(request.get_data())?;
                 }
-                self.update_histogram(request_result, phase_target, SectorState::Rescued);
+                self.update_histogram(request_result, *phase_target, SectorState::Rescued);
                 self.map_file.put(request.offset..(request.offset + request_result), SectorState::Rescued);
                 self.last_success = Some(Instant::now());
                 self.stats.good += request_result;
             } else {
-                self.update_histogram(request.size as u64, phase_target, SectorState::Bad);
+                self.update_histogram(request.size as u64, *phase_target, SectorState::Bad);
                 self.map_file.put(request.offset..(request.offset + request.size), SectorState::Bad);
                 self.stats.bad += request.size;
             };
@@ -267,12 +304,12 @@ impl Recover {
         Ok(())
     }
 
-    fn do_pass(&mut self) -> Result<(), Box<Error>> {
+    fn do_pass(&mut self, phase_target: &SectorState) -> Result<(), Box<Error>> {
         let mut pass_complete = false;
         while !pass_complete && self.should_run() {
             let mut reads: Vec<Range<u64>> =
                 (&self.map_file).iter_range(self.map_file.get_pos()..self.map_file.get_size())
-                .filter(|r| r.tag == self.phase_target)
+                .filter(|r| r.tag == *phase_target)
                 .flat_map(|r| range_to_reads(&r.as_range(), &self.block))
                 .take(READ_BATCH_SIZE).collect();
 
@@ -288,7 +325,7 @@ impl Recover {
             }
 
             if self.block.requests_avail() == 0 {
-                self.try_drain_request()?;
+                self.try_drain_request(phase_target)?;
             }
 
             let now = Instant::now();
@@ -298,7 +335,7 @@ impl Recover {
             }
         }
         while self.block.requests_pending() > 0 {
-            self.try_drain_request()?;
+            self.try_drain_request(phase_target)?;
         }
         self.do_sync()?;
         Ok(())
@@ -344,7 +381,7 @@ fn do_work() -> Result<(), Box<Error>> {
     let map = matches.opt_str("m").unwrap();
 
     let mut recover = Recover::new(input.as_str(), output.as_str(), map.as_str())?;
-    recover.do_phase()?;
+    recover.do_phases()?;
     Ok(())
 }
 

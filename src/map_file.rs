@@ -1,12 +1,12 @@
-use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
-use tagged_range::{self, TaggedRange};
-use std::error::Error;
-use std::fmt::{self, Display};
+use parse_error::ParseError;
+use phase::Phase;
 use std::cmp;
+use std::collections::HashMap;
+use std::fs::{self, OpenOptions};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::ops::Range;
 use std::path::Path;
-use std::fs::{self, OpenOptions};
-use std::collections::HashMap;
+use tagged_range::{self, TaggedRange};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
@@ -18,31 +18,15 @@ pub enum SectorState {
     Rescued = b'+',
 }
 
-#[derive(Debug)]
-pub struct ParseSectorStateError {
-}
-
-impl Display for ParseSectorStateError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.description())
-    }
-}
-
-impl Error for ParseSectorStateError {
-    fn description(&self) -> &str {
-        "Unknown character when parsing sector state."
-    }
-}
-
 impl SectorState {
-    pub fn from_u8(c: u8) -> Result<SectorState, ParseSectorStateError> {
+    pub fn from_char(c: char) -> Result<SectorState, ParseError> {
         use self::SectorState::*;
         for state in [Untried, Untrimmed, Unscraped, Bad, Rescued].iter() {
-            if c == *state as u8 {
+            if c as u8 == *state as u8 {
                 return Ok(state.clone())
             }
         }
-        Err(ParseSectorStateError{})
+        Err(ParseError::new("sector state"))
     }
 
     pub fn as_char(&self) -> char {
@@ -53,7 +37,7 @@ impl SectorState {
 #[derive(Debug)]
 pub struct MapFile {
     pos: u64,
-    status: u8,
+    status: Phase,
     size_bytes: u64,
     sector_states: TaggedRange<SectorState>,
 }
@@ -61,7 +45,7 @@ pub struct MapFile {
 impl MapFile {
     pub fn write_to_stream<W: Write>(&self, write: W) -> io::Result<()> {
         let mut write = BufWriter::new(write);
-        writeln!(&mut write, "0x{:08X}     {}", self.pos, self.status as char)?;
+        writeln!(&mut write, "0x{:08X}     {}", self.pos, self.status.as_char())?;
         for region in self.sector_states.into_iter() {
             writeln!(&mut write, "0x{:08X}  0x{:08X}  {}", region.start, region.length, region.tag.as_char())?;
         }
@@ -106,13 +90,13 @@ impl MapFile {
             if !read_state {
                 let mut iter = line.split_whitespace();
                 pos = Some(u64::from_str_radix(&iter.next().unwrap()[2..], radix).unwrap());
-                status = Some(iter.next().unwrap().parse::<String>().unwrap().trim().chars().next().unwrap() as u8);
+                status = Some(Phase::from_char(iter.next().unwrap().parse::<String>().unwrap().trim().chars().next().unwrap()).unwrap());
                 read_state = true;
             } else {
                 let mut iter = line.split_whitespace();
                 let pos = u64::from_str_radix(&iter.next().unwrap()[2..], radix).unwrap();
                 let size = u64::from_str_radix(&iter.next().unwrap()[2..], radix).unwrap();
-                let state = SectorState::from_u8(iter.next().unwrap().chars().next().unwrap() as u8).unwrap();
+                let state = SectorState::from_char(iter.next().unwrap().chars().next().unwrap()).unwrap();
                 sector_states.put(pos..(pos+size), state);
                 size_bytes = cmp::max(size_bytes, pos + size);
             }
@@ -132,7 +116,7 @@ impl MapFile {
         sector_states.put(0..size_bytes, SectorState::Untried);
         MapFile {
             pos: 0,
-            status: b'?',
+            status: Phase::Copying,
             size_bytes: size_bytes,
             sector_states: sector_states,
         }
@@ -156,6 +140,14 @@ impl MapFile {
 
     pub fn set_pos(&mut self, pos: u64) {
         self.pos = pos;
+    }
+
+    pub fn get_phase(&self) -> Phase {
+        self.status
+    }
+
+    pub fn set_phase(&mut self, phase: &Phase) {
+        self.status = *phase;
     }
 
     pub fn get_size(&self) -> u64 {
