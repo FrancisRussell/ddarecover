@@ -156,7 +156,9 @@ impl Recover {
             while !reads.is_empty() || self.block.requests_pending() > 0 {
                 while !reads.is_empty() && self.block.requests_avail() > 0 && !buffers.is_empty() {
                     let read = reads.pop().unwrap();
-                    let request = Request::new(read.start, read.end - read.start, buffers.pop().unwrap());
+                    let mut buffer = buffers.pop().unwrap();
+                    buffer.clear();
+                    let request = Request::new(read.start, read.end - read.start, buffer);
                     self.block.submit_request(request)?;
                     let current_pos = self.map_file.get_pos();
                     self.map_file.set_pos(cmp::max(current_pos, read.end));
@@ -166,8 +168,10 @@ impl Recover {
                     let request = self.block.get_completed_request()?;
                     let phase_target = self.phase_target;
                     if request.result > 0 {
-                        self.out_file.seek(SeekFrom::Start(request.offset))?;
-                        self.out_file.write_all(request.get_data())?;
+                        if !request.is_data_zeros() {
+                            self.out_file.seek(SeekFrom::Start(request.offset))?;
+                            self.out_file.write_all(request.get_data())?;
+                        }
                         self.update_histogram(request.result as u64, phase_target, SectorState::Rescued);
                         self.map_file.put(request.offset..(request.offset + request.result as u64), SectorState::Rescued);
                     } else {

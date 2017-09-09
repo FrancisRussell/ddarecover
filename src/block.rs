@@ -73,6 +73,15 @@ impl Request {
     pub fn reclaim_buffer(self) -> Buffer {
         self.buffer
     }
+
+    pub fn is_data_zeros(&self) -> bool {
+        for c in self.get_data() {
+            if *c != 0 {
+                return false;
+            }
+        }
+        return true;
+    }
 }
 
 #[derive(Debug)]
@@ -91,6 +100,12 @@ impl Buffer {
         unsafe {
             let data = self.data as *const u8;
             slice::from_raw_parts(data, self.size)
+        }
+    }
+
+    pub fn clear(&mut self) {
+        unsafe {
+            libc::memset(self.data, 0, self.size);
         }
     }
 }
