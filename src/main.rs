@@ -1,5 +1,7 @@
 extern crate ddarecover;
 extern crate ansi_escapes;
+extern crate ctrlc;
+extern crate nix;
 
 use ddarecover::block::{BlockDevice, Buffer, Request};
 use ddarecover::map_file::{MapFile, SectorState};
@@ -12,9 +14,12 @@ use std::time::Instant;
 use std::path::{Path, PathBuf};
 use std::io::{self, Seek, SeekFrom, Write};
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const READ_BATCH_SIZE: usize = 256;
 const SYNC_INTERVAL: usize = 60;
+
 
 struct Recover {
     block: BlockDevice,
@@ -26,6 +31,7 @@ struct Recover {
     histogram: HashMap<SectorState, u64>,
     phase_target: SectorState,
     buffer_cache: Vec<Buffer>,
+    should_run_flag: Arc<AtomicBool>,
 }
 
 impl Recover {
@@ -45,6 +51,7 @@ impl Recover {
         let outfile = OutFile::open(outfile_path, block.get_size_bytes()).expect("Unable to open output file");
 
         let histogram = map.get_histogram();
+        let should_run_flag = Arc::new(AtomicBool::new(true));
         let result = Recover {
             block: block,
             map_file: map,
@@ -55,8 +62,16 @@ impl Recover {
             histogram: histogram,
             phase_target: SectorState::Untried,
             buffer_cache: Vec::new(),
+            should_run_flag: should_run_flag.clone(),
         };
+        ctrlc::set_handler(move || {
+            should_run_flag.store(false, Ordering::SeqCst);
+        }).expect("Error setting Ctrl-C handler");
         Ok(result)
+    }
+
+    fn should_run(&self) -> bool {
+        self.should_run_flag.load(Ordering::SeqCst)
     }
 
     fn do_sync(&mut self) -> io::Result<()> {
@@ -130,7 +145,7 @@ impl Recover {
     fn do_phase(&mut self) -> Result<(), Box<Error>> {
         let phase_target = self.phase_target;
         self.print_status(false);
-        while self.get_histogram_value(phase_target) > 0 {
+        while self.get_histogram_value(phase_target) > 0 && self.should_run() {
             self.do_pass()?;
             self.map_file.set_pos(0);
         }
@@ -151,9 +166,33 @@ impl Recover {
         self.buffer_cache.push(buffer)
     }
 
+    fn try_drain_request(&mut self) -> Result<(), Box<Error>> {
+        if self.block.requests_pending() > 0 {
+            let request = match self.block.get_completed_request() {
+                Ok(r) => r,
+                Err(nix::Error::Sys(nix::Errno::EINTR)) => return Ok(()),
+                Err(err) => return Err(Box::new(err)),
+            };
+            let phase_target = self.phase_target;
+            if request.result > 0 {
+                if !request.is_data_zeros() {
+                    self.out_file.seek(SeekFrom::Start(request.offset))?;
+                    self.out_file.write_all(request.get_data())?;
+                }
+                self.update_histogram(request.result as u64, phase_target, SectorState::Rescued);
+                self.map_file.put(request.offset..(request.offset + request.result as u64), SectorState::Rescued);
+            } else {
+                self.update_histogram(request.size as u64, phase_target, SectorState::Bad);
+                self.map_file.put(request.offset..(request.offset + request.size), SectorState::Bad);
+            };
+            self.recycle_buffer(request.reclaim_buffer());
+        }
+        Ok(())
+    }
+
     fn do_pass(&mut self) -> Result<(), Box<Error>> {
         let mut pass_complete = false;
-        while !pass_complete {
+        while !pass_complete && self.should_run() {
             let mut reads: Vec<Range<u64>> =
                 (&self.map_file).iter_range(self.map_file.get_pos()..self.map_file.get_size())
                 .filter(|r| r.tag == self.phase_target)
@@ -161,40 +200,28 @@ impl Recover {
                 .take(READ_BATCH_SIZE).collect();
 
             pass_complete = reads.is_empty();
-            while !reads.is_empty() || self.block.requests_pending() > 0 {
-                while !reads.is_empty() && self.block.requests_avail() > 0 {
-                    let read = reads.pop().unwrap();
-                    let mut buffer = self.get_cleared_buffer();
-                    buffer.clear();
-                    let request = Request::new(read.start, read.end - read.start, buffer);
-                    self.block.submit_request(request)?;
-                    let current_pos = self.map_file.get_pos();
-                    self.map_file.set_pos(cmp::max(current_pos, read.end));
-                }
-
-                if (reads.is_empty() && self.block.requests_pending() > 0) || self.block.requests_avail() == 0 {
-                    let request = self.block.get_completed_request()?;
-                    let phase_target = self.phase_target;
-                    if request.result > 0 {
-                        if !request.is_data_zeros() {
-                            self.out_file.seek(SeekFrom::Start(request.offset))?;
-                            self.out_file.write_all(request.get_data())?;
-                        }
-                        self.update_histogram(request.result as u64, phase_target, SectorState::Rescued);
-                        self.map_file.put(request.offset..(request.offset + request.result as u64), SectorState::Rescued);
-                    } else {
-                        self.update_histogram(request.size as u64, phase_target, SectorState::Bad);
-                        self.map_file.put(request.offset..(request.offset + request.size), SectorState::Bad);
-                    };
-                    self.recycle_buffer(request.reclaim_buffer());
-
-                    let now = Instant::now();
-                    self.print_status(true);
-                    if now.duration_since(self.last_sync.clone()).as_secs() >= SYNC_INTERVAL as u64 {
-                        self.do_sync()?;
-                    }
-                }
+            while !reads.is_empty() && self.block.requests_avail() > 0 {
+                let read = reads.pop().unwrap();
+                let mut buffer = self.get_cleared_buffer();
+                buffer.clear();
+                let request = Request::new(read.start, read.end - read.start, buffer);
+                self.block.submit_request(request)?;
+                let current_pos = self.map_file.get_pos();
+                self.map_file.set_pos(cmp::max(current_pos, read.end));
             }
+
+            if self.block.requests_avail() == 0 {
+                self.try_drain_request()?;
+            }
+
+            let now = Instant::now();
+            self.print_status(true);
+            if now.duration_since(self.last_sync.clone()).as_secs() >= SYNC_INTERVAL as u64 {
+                self.do_sync()?;
+            }
+        }
+        while self.block.requests_pending() > 0 {
+            self.try_drain_request()?;
         }
         self.do_sync()?;
         Ok(())

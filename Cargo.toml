@@ -7,3 +7,4 @@ authors = ["Francis Russell <francis@unchartedbackwaters.co.uk>"]
 libc = "0.2.30"
 nix = "0.9.0"
 ansi-escapes = "0.1.0"
+ctrlc = "3.0.2"
