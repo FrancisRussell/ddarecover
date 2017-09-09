@@ -92,6 +92,18 @@ pub struct Buffer {
 }
 
 impl Buffer {
+    pub fn allocate_aligned(size: usize, alignment: usize) -> Buffer {
+        let buffer = unsafe { libc::memalign(alignment, size) };
+        if buffer.is_null() {
+            panic!("Buffer allocation failed!");
+        }
+        Buffer {
+            alignment: alignment,
+            size: size,
+            data: buffer,
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.size
     }
@@ -106,6 +118,14 @@ impl Buffer {
     pub fn clear(&mut self) {
         unsafe {
             libc::memset(self.data, 0, self.size);
+        }
+    }
+}
+
+impl Drop for Buffer {
+    fn drop(&mut self) {
+        unsafe {
+            libc::free(self.data);
         }
     }
 }
@@ -249,12 +269,7 @@ impl BlockDevice {
 
     pub fn create_io_buffer(&self, sectors: usize) -> Buffer {
         let bytes = sectors * self.sector_size;
-        let buffer = unsafe { libc::memalign(self.sector_size, bytes) };
-        Buffer {
-            alignment: self.sector_size,
-            size: bytes,
-            data: buffer,
-        }
+        Buffer::allocate_aligned(bytes, self.sector_size)
     }
 }
 
