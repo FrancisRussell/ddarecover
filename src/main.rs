@@ -105,19 +105,23 @@ impl Recover {
 
     fn print_status(&self, overwrite: bool) {
         if overwrite {
-            print!("{}", ansi_escapes::EraseLines(8));
+            print!("{}{}", ansi_escapes::CursorLeft, ansi_escapes::CursorUp(7));
         }
-        println!("Press Ctrl+C to exit.\n");
-        println!("{:>15}: {:15}", "Phase", format!("{} (pass {})", self.map_file.get_phase().name(), self.map_file.get_pass()));
-        println!("{:>15}: {:15} {:>15}: {:15} {:>15}: {:15}",
+        println!("Press Ctrl+C to exit.{}\n{}",ansi_escapes::EraseEndLine, ansi_escapes::EraseEndLine);
+        println!("{:>15}: {:15}{}", "Phase",
+                 format!("{} (pass {})", self.map_file.get_phase().name(), self.map_file.get_pass()),
+                 ansi_escapes::EraseEndLine);
+        println!("{:>15}: {:15} {:>15}: {:15} {:>15}: {:15}{}",
                  "ipos", self.format_bytes(self.map_file.get_pos()),
                  "rescued", self.get_histogram_value_formatted(SectorState::Rescued),
-                 "bad", self.get_histogram_value_formatted(SectorState::Bad));
+                 "bad", self.get_histogram_value_formatted(SectorState::Bad),
+                 ansi_escapes::EraseEndLine);
 
-        println!("{:>15}: {:15} {:>15}: {:15} {:>15}: {:15}",
+        println!("{:>15}: {:15} {:>15}: {:15} {:>15}: {:15}{}",
                  "non-tried", self.get_histogram_value_formatted(SectorState::Untried),
                  "non-trimmed", self.get_histogram_value_formatted(SectorState::Untrimmed),
-                 "non-scraped", self.get_histogram_value_formatted(SectorState::Unscraped));
+                 "non-scraped", self.get_histogram_value_formatted(SectorState::Unscraped),
+                 ansi_escapes::EraseEndLine);
 
         let now = Instant::now();
         let elapsed = now.duration_since(self.start).as_secs();
