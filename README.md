@@ -13,16 +13,16 @@ you're probably better off using Ddrescue.
 
 ```
 $ cargo build --release
-   Compiling ddarecover v0.1.0 (file:///home/fpr/ddarecover)
+   Compiling ddarecover v0.1.0 (file:///mnt/recovery/ddarecover)
     Finished release [optimized] target(s) in 17.97 secs
 $ sudo ./target/release/ddarecover -i /dev/sda -o ./drive.img -m ./drive.map 
 Press Ctrl+C to exit.
 
-          Phase: Retrying (pass 2)
-           ipos: 24576 B                 rescued: 476940 MiB                  bad: 8192 B         
-      non-tried: 0 B                 non-trimmed: 0 B                 non-scraped: 0 B            
-      read rate: 0 B/s                error rate: 4096 B/s             total rate: 4096 B/s       
-       run time: 2s                 last success: never                 remaining: 0s             
+          Phase: Copying (pass 1)
+           ipos: 28532 MiB               rescued: 415354 MiB                  bad: 12124 MiB
+      non-tried: 49463 MiB           non-trimmed: 0 B                 non-scraped: 0 B
+      read rate: 22460 B/s            error rate: 10788 B/s            total rate: 33248 B/s
+       run time: 3m 33s             last success: 0s ago                remaining: 18d 1h
 ```
 
 ## Disclaimer
