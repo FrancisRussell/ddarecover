@@ -41,7 +41,7 @@ impl<T> TaggedRange<T> {
         }
     }
 
-    pub fn put(&mut self, range: Range<u64>, tag: T) where T: Clone {
+    pub fn put(&mut self, range: Range<u64>, tag: T) where T: Clone + Eq {
         assert!(range.end >= range.start);
         if range.end == range.start {
             return;
@@ -72,6 +72,8 @@ impl<T> TaggedRange<T> {
             tag: tag,
         };
         self.starts.insert(range.start, new_region);
+        self.merge_at_offset(range.start);
+        self.merge_at_offset(range.end);
     }
 
     fn get_covering_range(&self, range: &Range<u64>) -> Range<u64> {
@@ -84,6 +86,27 @@ impl<T> TaggedRange<T> {
             None => range.start,
         };
         start..range.end
+    }
+
+    fn merge_at_offset(&mut self, offset: u64) where T: Clone + Eq {
+        let first = match self.starts.range(..offset).rev().next() {
+            Some((start, region)) => (start.clone(), region.clone()),
+            None => return,
+        };
+        let second = match self.starts.range(offset..).next() {
+            Some((start, region)) => (start.clone(), region.clone()),
+            None => return,
+        };
+
+        if first.0 + first.1.length == second.0 && first.1.tag == second.1.tag {
+            let new_region = InternalRegion {
+                length: first.1.length + second.1.length,
+                tag: first.1.tag,
+            };
+            self.starts.remove(&first.0);
+            self.starts.remove(&second.0);
+            self.starts.insert(first.0, new_region);
+        }
     }
 
     pub fn iter<'a>(&'a self) -> Iter<'a, T> where T: Clone {
