@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 const READ_BATCH_SIZE: usize = 32;
-const SYNC_INTERVAL: usize = 120;
+const SYNC_INTERVAL: usize = 5 * 60;
 
 #[derive(Debug)]
 struct Stats {
