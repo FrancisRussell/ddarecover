@@ -1,6 +1,7 @@
-use parse_error::ParseError;
-use std::{iter, slice};
 use map_file::SectorState;
+use parse_error::ParseError;
+use phase::Phase::*;
+use std::{iter, slice};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
@@ -14,9 +15,10 @@ pub enum Phase {
     Finished = b'+',
 }
 
+static PHASES: [Phase; 5] = [Copying, Trimming, Scraping, Retrying, Finished];
+
 impl Phase {
     pub fn from_char(c: char) -> Result<Phase, ParseError> {
-        use self::Phase::*;
         for state in Self::values() {
             if c as u8 == state as u8 {
                 return Ok(state.clone())
@@ -30,13 +32,10 @@ impl Phase {
     }
 
     fn values() -> iter::Cloned<slice::Iter<'static, Phase>> {
-        use self::Phase::*;
-        static PHASES: [Phase; 5] = [Copying, Trimming, Scraping, Retrying, Finished];
         PHASES.iter().cloned()
     }
 
     pub fn next(&self) -> Option<Self> {
-        use self::Phase::*;
         match *self {
             Copying => Some(Trimming),
             Trimming => Some(Scraping),
@@ -50,7 +49,6 @@ impl Phase {
     }
 
     pub fn target_sectors(&self) -> Option<SectorState> {
-        use self::Phase::*;
         match *self {
             Copying => Some(SectorState::Untried),
             Trimming => Some(SectorState::Untrimmed),
