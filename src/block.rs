@@ -1,11 +1,13 @@
+use libaio::{self, aio_context_t, io_event, iocb};
 use libc::{self, c_int, c_uint, c_void};
 use nix;
 use std::collections::BTreeMap;
-use std::ffi::CString;
 use std::error::Error;
-use libaio::{self, aio_context_t, io_event, iocb};
 use std::ptr;
 use std::slice;
+use std::fs::{File, OpenOptions};
+use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::io::AsRawFd;
 
 const MAX_EVENTS: c_int = 32;
 
@@ -28,7 +30,7 @@ const MAX_EVENTS: c_int = 32;
 pub struct BlockDevice {
     block_size_physical: usize,
     context: aio_context_t,
-    fd: c_int,
+    file: File,
     iocbs: Vec<(bool, iocb)>,
     requests: BTreeMap<usize, Request>,
     sector_size: usize,
@@ -132,11 +134,12 @@ impl Drop for Buffer {
 
 impl BlockDevice {
     pub fn open(path: &str) -> Result<BlockDevice, Box<Error>> {
-        let path = CString::new(path)?;
-        let fd = unsafe { libc::open(path.as_ptr(), libc::O_RDONLY | libc::O_DIRECT) };
-        if fd == -1 {
-            return Err(Box::new(Self::fail_errno()));
-        }
+        let file = OpenOptions::new()
+            .read(true)
+            .write(false)
+            .custom_flags(libc::O_DIRECT)
+            .open(path)?;
+        let fd = file.as_raw_fd();
         let block_size_physical = Self::query_block_size_physical(fd)?;
         let sector_size = Self::query_sector_size(fd)?;
         let size_bytes = Self::query_size_bytes(fd)?;
@@ -149,13 +152,17 @@ impl BlockDevice {
         let result = BlockDevice {
             context: context,
             block_size_physical: block_size_physical as usize,
-            fd: fd,
+            file: file,
             iocbs: iocbs,
             requests: BTreeMap::new(),
             size_bytes: size_bytes,
             sector_size: sector_size as usize,
         };
         Ok(result)
+    }
+
+    fn get_fd(&self) -> c_int {
+        self.file.as_raw_fd()
     }
 
     fn query_block_size_physical(fd: c_int) -> Result<c_uint, nix::Error> {
@@ -190,13 +197,13 @@ impl BlockDevice {
 
     pub fn submit_request(&mut self, req: Request) -> Result<(), nix::Error> {
         assert!(self.requests_avail() > 0);
+        let fd = self.get_fd();
         let slot = self.find_slot();
         let iocb = &mut self.iocbs[slot];
         iocb.0 = true;
-        libaio::io_prep_pread(&mut iocb.1, self.fd as u32, req.buffer.data, req.size, req.offset as i64);
+        libaio::io_prep_pread(&mut iocb.1, fd as u32, req.buffer.data, req.size, req.offset as i64);
         let iocb_ptr = &mut iocb.1 as *mut iocb;
         let mut iocb_list = [iocb_ptr];
-        //let iocb_list = &mut iocb_ptr as *mut *mut iocb;
         let res = unsafe {
             libaio::io_submit(self.context, iocb_list.len() as i64, &mut iocb_list[0] as *mut *mut iocb)
         };
@@ -277,7 +284,6 @@ impl Drop for BlockDevice {
     fn drop(&mut self) {
         unsafe {
             libaio::io_destroy(self.context);
-            libc::close(self.fd)
         };
     }
 }
