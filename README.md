@@ -31,6 +31,6 @@ This code has not been extensively tested. It is also highly unpolished. It may
 incorrectly recover data or damage data recovered using other tools. If you use
 this tool after a partial recovery with Ddrescue, It is strongly recommended
 that you invoke this tool using copies of the drive image and map file. If you
-trust [BTRFS](https://btrfs.wiki.kernel.org/index.php/Main_Page), its
+trust [Btrfs](https://btrfs.wiki.kernel.org/index.php/Main_Page), its
 copy-on-write behaviour for files may prove useful for creating low-overhead
 copies of large drive images.
