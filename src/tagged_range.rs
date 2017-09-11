@@ -99,13 +99,9 @@ impl<T> TaggedRange<T> {
         };
 
         if first.0 + first.1.length == second.0 && first.1.tag == second.1.tag {
-            let new_region = InternalRegion {
-                length: first.1.length + second.1.length,
-                tag: first.1.tag,
-            };
-            self.starts.remove(&first.0);
+            let new_length = first.1.length + second.1.length;
             self.starts.remove(&second.0);
-            self.starts.insert(first.0, new_region);
+            self.starts.get_mut(&first.0).unwrap().length = new_length;
         }
     }
 
