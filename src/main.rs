@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-const READ_BATCH_SIZE: usize = 32;
+const READ_BATCH_SIZE: usize = 128;
 const SYNC_INTERVAL: usize = 5 * 60;
 const REFRESH_INTERVAL: f32 = 0.5;
 
