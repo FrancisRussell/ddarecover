@@ -22,6 +22,7 @@ use std::time::Instant;
 
 const READ_BATCH_SIZE: usize = 32;
 const SYNC_INTERVAL: usize = 5 * 60;
+const REFRESH_INTERVAL: f32 = 0.5;
 
 #[derive(Debug)]
 struct Stats {
@@ -49,6 +50,7 @@ struct Recover {
     start: Instant,
     last_sync: Instant,
     last_success: Option<Instant>,
+    last_print: Option<Instant>,
     histogram: HashMap<SectorState, u64>,
     buffer_cache: Vec<Buffer>,
     should_run_flag: Arc<AtomicBool>,
@@ -81,6 +83,7 @@ impl Recover {
             start: Instant::now(),
             last_sync: Instant::now(),
             last_success: None,
+            last_print: None,
             histogram: histogram,
             buffer_cache: Vec::new(),
             should_run_flag: should_run_flag.clone(),
@@ -101,6 +104,24 @@ impl Recover {
         self.map_file.write_to_path(&self.map_file_path)?;
         self.last_sync = Instant::now();
         Ok(())
+    }
+
+    fn update_status(&mut self) {
+        let now = Instant::now();
+        match self.last_print {
+            None => {
+                self.print_status(false);
+                self.last_print = Some(now);
+            },
+            Some(previous) => {
+                let duration = now.duration_since(previous);
+                let seconds = duration.as_secs() as f32 + duration.subsec_nanos() as f32 * 1e-9;
+                if seconds > REFRESH_INTERVAL {
+                    self.print_status(true);
+                    self.last_print = Some(now);
+                }
+            },
+        }
     }
 
     fn print_status(&self, overwrite: bool) {
@@ -228,7 +249,7 @@ impl Recover {
     }
 
     fn do_phases(&mut self) -> Result<(), Box<Error>> {
-        self.print_status(false);
+        self.update_status();
         let mut finished = false;
         while !finished && self.should_run() {
             if self.is_phase_complete() {
@@ -336,7 +357,7 @@ impl Recover {
             }
 
             let now = Instant::now();
-            self.print_status(true);
+            self.update_status();
             if now.duration_since(self.last_sync.clone()).as_secs() >= SYNC_INTERVAL as u64 {
                 self.do_sync()?;
             }
