@@ -10,7 +10,7 @@ use ddarecover::out_file::OutFile;
 use getopts::Options;
 use std::env;
 use std::cmp;
-use std::collections::HashMap;
+use std::collections::{VecDeque, HashMap};
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, Seek, SeekFrom, Write};
@@ -335,35 +335,35 @@ impl Recover {
     fn do_pass(&mut self, phase_target: &SectorState) -> Result<(), Box<Error>> {
         let mut pass_complete = false;
         while !pass_complete && self.should_run() {
-            let mut reads: Vec<Range<u64>> =
+            let mut reads: VecDeque<Range<u64>> =
                 (&self.map_file).iter_range(self.map_file.get_pos()..self.map_file.get_size())
                 .filter(|r| r.tag == *phase_target)
                 .flat_map(|r| range_to_reads(&r.as_range(), &self.block))
                 .take(READ_BATCH_SIZE).collect();
 
-            let new_start_pos = reads.iter().map(|r| r.start).fold(self.map_file.get_size(), cmp::min);
-            self.map_file.set_pos(new_start_pos);
-
             pass_complete = reads.is_empty();
-            while !reads.is_empty() && self.block.requests_avail() > 0 {
-                let read = reads.pop().unwrap();
-                let buffer = self.get_cleared_buffer();
-                let request = Request::new(read.start, read.end - read.start, buffer);
-                self.block.submit_request(request)?;
-            }
-
-            if self.block.requests_avail() == 0 {
-                self.try_drain_request(phase_target)?;
-            }
-
-            let now = Instant::now();
-            self.update_status();
-            if now.duration_since(self.last_sync.clone()).as_secs() >= SYNC_INTERVAL as u64 {
-                self.do_sync()?;
+            while !reads.is_empty() && self.should_run() {
+                if self.block.requests_avail() > 0 {
+                    let read = reads.pop_front().unwrap();
+                    let buffer = self.get_cleared_buffer();
+                    let request = Request::new(read.start, read.end - read.start, buffer);
+                    self.block.submit_request(request)?;
+                    let current_start = self.map_file.get_pos();
+                    self.map_file.set_pos(cmp::max(current_start, read.end));
+                }
+                if self.block.requests_avail() == 0 {
+                    self.try_drain_request(phase_target)?;
+                    self.update_status();
+                }
+                let now = Instant::now();
+                if now.duration_since(self.last_sync.clone()).as_secs() >= SYNC_INTERVAL as u64 {
+                    self.do_sync()?;
+                }
             }
         }
         while self.block.requests_pending() > 0 {
             self.try_drain_request(phase_target)?;
+            self.update_status();
         }
         Ok(())
     }
