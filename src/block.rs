@@ -217,6 +217,7 @@ impl BlockDevice {
     }
 
     pub fn get_completed_request(&mut self) -> Result<Request, nix::Error> {
+        assert!(self.requests_pending() > 0);
         let mut event = io_event::new();
         let res = unsafe {
             libaio::io_getevents(self.context, 1, 1, &mut event as *mut io_event, ptr::null_mut())
