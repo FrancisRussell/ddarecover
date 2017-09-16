@@ -202,6 +202,7 @@ impl BlockDevice {
         let iocb = &mut self.iocbs[slot];
         iocb.0 = true;
         libaio::io_prep_pread(&mut iocb.1, fd as u32, req.buffer.data, req.size, req.offset as i64);
+        iocb.1.data = slot as u64;
         let iocb_ptr = &mut iocb.1 as *mut iocb;
         let mut iocb_list = [iocb_ptr];
         let res = unsafe {
@@ -226,15 +227,12 @@ impl BlockDevice {
             let errno = nix::Errno::from_i32(-res as i32);
             Err(nix::Error::Sys(errno))
         } else {
-            for (idx, &mut (ref mut used, ref mut cb)) in self.iocbs.iter_mut().enumerate() {
-                if event.obj == cb as *mut iocb as u64 {
-                    *used = false;
-                    let mut req = self.requests.remove(&idx).unwrap();
-                    req.result = event.res as isize;
-                    return Ok(req);
-                }
-            }
-            panic!("Couldn't find iocb for completed request!");
+            let slot = event.data as usize;
+            let  &mut (ref mut used, _) = self.iocbs.get_mut(slot).expect("iocb maps to invalid slot");
+            *used = false;
+            let mut req = self.requests.remove(&slot).unwrap();
+            req.result = event.res as isize;
+            return Ok(req);
         }
     }
 
