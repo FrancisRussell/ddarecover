@@ -1,4 +1,5 @@
-use libc::{c_int, c_long, c_void, int16_t, int64_t, timespec, uint16_t, uint32_t, uint64_t};
+use libc::{c_int, c_long, c_void, int16_t, int32_t, int64_t, timespec, uint16_t, uint32_t, uint64_t};
+use num::cast;
 
 #[allow(non_camel_case_types)]
 pub enum aio_context {}
@@ -81,8 +82,8 @@ impl iocb {
     }
 }
 
-pub fn io_prep_pread(iocb: &mut iocb, fd: uint32_t, buf: *mut c_void, count: uint64_t, offset: int64_t) {
-    iocb.fildes = fd;
+pub fn io_prep_pread(iocb: &mut iocb, fd: int32_t, buf: *mut c_void, count: uint64_t, offset: int64_t) {
+    iocb.fildes = cast::<int32_t, uint32_t>(fd).unwrap();
     iocb.lio_opcode = iocb_cmd::IOCB_CMD_PREAD as u16;
     iocb.reqprio = 0;
     iocb.buf = buf as u64;

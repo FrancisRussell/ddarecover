@@ -1,5 +1,6 @@
 extern crate combine;
 extern crate libc;
+extern crate num;
 
 #[macro_use]
 extern crate nix;
