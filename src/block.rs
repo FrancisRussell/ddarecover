@@ -1,4 +1,4 @@
-use libaio::{self, aio_context_t, io_event, iocb};
+use aio_abi::{self, aio_context_t, io_event, iocb};
 use libc::{self, c_int, c_uint, c_void};
 use nix;
 use std::collections::BTreeMap;
@@ -145,7 +145,7 @@ impl BlockDevice {
         let size_bytes = Self::query_size_bytes(fd)?;
         let iocbs = vec![(false, iocb::new()); MAX_EVENTS as usize];
         let mut context: aio_context_t = ptr::null_mut();
-        if unsafe { libaio::io_setup(iocbs.len() as i32, &mut context as *mut aio_context_t) } == -1 {
+        if unsafe { aio_abi::io_setup(iocbs.len() as i32, &mut context as *mut aio_context_t) } == -1 {
             return Err(Box::new(Self::fail_errno()));
         }
 
@@ -201,12 +201,12 @@ impl BlockDevice {
         let slot = self.find_slot();
         let iocb = &mut self.iocbs[slot];
         iocb.0 = true;
-        libaio::io_prep_pread(&mut iocb.1, fd as u32, req.buffer.data, req.size, req.offset as i64);
+        aio_abi::io_prep_pread(&mut iocb.1, fd as u32, req.buffer.data, req.size, req.offset as i64);
         iocb.1.data = slot as u64;
         let iocb_ptr = &mut iocb.1 as *mut iocb;
         let mut iocb_list = [iocb_ptr];
         let res = unsafe {
-            libaio::io_submit(self.context, iocb_list.len() as i64, &mut iocb_list[0] as *mut *mut iocb)
+            aio_abi::io_submit(self.context, iocb_list.len() as i64, &mut iocb_list[0] as *mut *mut iocb)
         };
         if res < 0 {
             let errno = nix::Errno::from_i32(-res as i32);
@@ -221,7 +221,7 @@ impl BlockDevice {
         assert!(self.requests_pending() > 0);
         let mut event = io_event::new();
         let res = unsafe {
-            libaio::io_getevents(self.context, 1, 1, &mut event as *mut io_event, ptr::null_mut())
+            aio_abi::io_getevents(self.context, 1, 1, &mut event as *mut io_event, ptr::null_mut())
         };
         if res < 0 {
             let errno = nix::Errno::from_i32(-res as i32);
@@ -282,7 +282,7 @@ impl BlockDevice {
 impl Drop for BlockDevice {
     fn drop(&mut self) {
         unsafe {
-            libaio::io_destroy(self.context);
+            aio_abi::io_destroy(self.context);
         };
     }
 }

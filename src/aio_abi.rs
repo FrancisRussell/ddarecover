@@ -51,14 +51,15 @@ impl io_event {
 
 #[allow(non_camel_case_types)]
 pub enum iocb_cmd {
-    IO_CMD_PREAD = 0,
-    IO_CMD_PWRITE = 1,
-    IO_CMD_FSYNC = 2,
-    IO_CMD_FDSYNC = 3,
-    IO_CMD_POLL = 5,
-    IO_CMD_NOOP = 6,
-    IO_CMD_PREADV = 7,
-    IO_CMD_PWRITEV = 8,
+    IOCB_CMD_PREAD = 0,
+    IOCB_CMD_PWRITE = 1,
+    IOCB_CMD_FSYNC = 2,
+    IOCB_CMD_FDSYNC = 3,
+    IOCB_CMD_PREADX = 4,
+    IOCB_CMD_POLL = 5,
+    IOCB_CMD_NOOP = 6,
+    IOCB_CMD_PREADV = 7,
+    IOCB_CMD_PWRITEV = 8,
 }
 
 impl iocb {
@@ -67,7 +68,7 @@ impl iocb {
             data: 0,
             key: 0,
             reserved1: 0,
-            lio_opcode: iocb_cmd::IO_CMD_NOOP as u16,
+            lio_opcode: iocb_cmd::IOCB_CMD_NOOP as u16,
             reqprio: 0,
             fildes: 0,
             buf: 0,
@@ -82,7 +83,7 @@ impl iocb {
 
 pub fn io_prep_pread(iocb: &mut iocb, fd: uint32_t, buf: *mut c_void, count: uint64_t, offset: int64_t) {
     iocb.fildes = fd;
-    iocb.lio_opcode = iocb_cmd::IO_CMD_PREAD as u16;
+    iocb.lio_opcode = iocb_cmd::IOCB_CMD_PREAD as u16;
     iocb.reqprio = 0;
     iocb.buf = buf as u64;
     iocb.nbytes = count;
