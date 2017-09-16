@@ -129,16 +129,16 @@ impl Recover {
             print!("{}{}", ansi_escapes::CursorLeft, ansi_escapes::CursorUp(7));
         }
         println!("Press Ctrl+C to exit.{}\n{}",ansi_escapes::EraseEndLine, ansi_escapes::EraseEndLine);
-        println!("{:>15}: {:15}{}", "Phase",
+        println!("{:>13}: {:19}{}", "Phase",
                  format!("{} (pass {})", self.map_file.get_phase().name(), self.map_file.get_pass()),
                  ansi_escapes::EraseEndLine);
-        println!("{:>15}: {:15} {:>15}: {:15} {:>15}: {:15}{}",
-                 "ipos", self.format_bytes(self.map_file.get_pos()),
+        println!("{:>13}: {:19} {:>13}: {:19} {:>13}: {:19}{}",
+                 "ipos", self.format_bytes_with_percentage(self.map_file.get_pos()),
                  "rescued", self.get_histogram_value_formatted(SectorState::Rescued),
                  "bad", self.get_histogram_value_formatted(SectorState::Bad),
                  ansi_escapes::EraseEndLine);
 
-        println!("{:>15}: {:15} {:>15}: {:15} {:>15}: {:15}{}",
+        println!("{:>13}: {:19} {:>13}: {:19} {:>13}: {:19}{}",
                  "non-tried", self.get_histogram_value_formatted(SectorState::Untried),
                  "non-trimmed", self.get_histogram_value_formatted(SectorState::Untrimmed),
                  "non-scraped", self.get_histogram_value_formatted(SectorState::Unscraped),
@@ -159,7 +159,7 @@ impl Recover {
             0
         };
 
-        println!("{:>15}: {:15} {:>15}: {:15} {:>15}: {:15}",
+        println!("{:>13}: {:19} {:>13}: {:19} {:>13}: {:19}",
                  "read rate", self.format_rate(good, elapsed),
                  "error rate", self.format_rate(bad, elapsed),
                  "total rate", self.format_rate(total, elapsed));
@@ -168,7 +168,7 @@ impl Recover {
             None => String::from("never"),
             Some(time) => format!("{} ago", self.format_seconds(now.duration_since(time).as_secs())),
         };
-        println!("{:>15}: {:15} {:>15}: {:15} {:>15}: {:15}",
+        println!("{:>13}: {:19} {:>13}: {:19} {:>13}: {:19}",
                  "run time", self.format_seconds(elapsed),
                  "last success", last_success,
                  "remaining", self.format_seconds(seconds_remaining));
@@ -185,6 +185,11 @@ impl Recover {
             }
         }
         format!("{:.0} {}", res_bytes, res_unit)
+    }
+
+    fn format_bytes_with_percentage(&self, bytes: u64) -> String {
+        let percentage = (bytes as f64) * 100.0 / (self.map_file.get_size() as f64);
+        format!("{} ({:.1}%)", self.format_bytes(bytes), percentage)
     }
 
     fn format_rate(&self, bytes: u64, seconds: u64) -> String {
@@ -219,8 +224,9 @@ impl Recover {
     }
 
     fn get_histogram_value_formatted(&self, state: SectorState) -> String {
-        self.format_bytes(self.get_histogram_value(state))
+        self.format_bytes_with_percentage(self.get_histogram_value(state))
     }
+
 
     fn get_histogram_value(&self, state: SectorState) -> u64 {
         *self.histogram.get(&state).unwrap_or(&0)
