@@ -130,7 +130,7 @@ impl Recover {
         if overwrite {
             print!("{}{}", ansi_escapes::CursorLeft, ansi_escapes::CursorUp(7));
         }
-        println!("Press Ctrl+C to exit.{}\n{}",ansi_escapes::EraseEndLine, ansi_escapes::EraseEndLine);
+        println!("Press Ctrl+C to exit.{}\n{}", ansi_escapes::EraseEndLine, ansi_escapes::EraseEndLine);
         println!("{:>kw$}: {:vw$}{}", "Phase",
                  format!("{} (pass {})", self.map_file.get_phase().name(), self.map_file.get_pass()),
                  ansi_escapes::EraseEndLine,
@@ -167,10 +167,11 @@ impl Recover {
             0
         };
 
-        println!("{:>kw$}: {:vw$} {:>kw$}: {:vw$} {:>kw$}: {:vw$}",
+        println!("{:>kw$}: {:vw$} {:>kw$}: {:vw$} {:>kw$}: {:vw$}{}",
                  "read rate", self.format_rate(good, elapsed),
                  "error rate", self.format_rate(bad, elapsed),
                  "total rate", self.format_rate(total, elapsed),
+                 ansi_escapes::EraseEndLine,
                  kw = key_width,
                  vw = value_width);
 
@@ -178,12 +179,14 @@ impl Recover {
             None => String::from("never"),
             Some(time) => format!("{} ago", self.format_seconds(now.duration_since(time).as_secs())),
         };
-        println!("{:>kw$}: {:vw$} {:>kw$}: {:vw$} {:>kw$}: {:vw$}",
+        println!("{:>kw$}: {:vw$} {:>kw$}: {:vw$} {:>kw$}: {:vw$}{}",
                  "run time", self.format_seconds(elapsed),
                  "last success", last_success,
                  "remaining", self.format_seconds(seconds_remaining),
+                 ansi_escapes::EraseEndLine,
                  kw = key_width,
                  vw = value_width);
+        print!("{}{}", ansi_escapes::EraseEndLine, ansi_escapes::CursorLeft);
     }
 
     fn format_bytes(&self, bytes: u64) -> String {
