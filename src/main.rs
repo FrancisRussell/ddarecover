@@ -125,24 +125,32 @@ impl Recover {
     }
 
     fn print_status(&self, overwrite: bool) {
+        let key_width = 13;
+        let value_width = 19;
         if overwrite {
             print!("{}{}", ansi_escapes::CursorLeft, ansi_escapes::CursorUp(7));
         }
         println!("Press Ctrl+C to exit.{}\n{}",ansi_escapes::EraseEndLine, ansi_escapes::EraseEndLine);
-        println!("{:>13}: {:19}{}", "Phase",
+        println!("{:>kw$}: {:vw$}{}", "Phase",
                  format!("{} (pass {})", self.map_file.get_phase().name(), self.map_file.get_pass()),
-                 ansi_escapes::EraseEndLine);
-        println!("{:>13}: {:19} {:>13}: {:19} {:>13}: {:19}{}",
+                 ansi_escapes::EraseEndLine,
+                 kw = key_width,
+                 vw = value_width);
+        println!("{:>kw$}: {:vw$} {:>kw$}: {:vw$} {:>kw$}: {:vw$}{}",
                  "ipos", self.format_bytes_with_percentage(self.map_file.get_pos()),
                  "rescued", self.get_histogram_value_formatted(SectorState::Rescued),
                  "bad", self.get_histogram_value_formatted(SectorState::Bad),
-                 ansi_escapes::EraseEndLine);
+                 ansi_escapes::EraseEndLine,
+                 kw = key_width,
+                 vw = value_width);
 
-        println!("{:>13}: {:19} {:>13}: {:19} {:>13}: {:19}{}",
+        println!("{:>kw$}: {:vw$} {:>kw$}: {:vw$} {:>kw$}: {:vw$}{}",
                  "non-tried", self.get_histogram_value_formatted(SectorState::Untried),
                  "non-trimmed", self.get_histogram_value_formatted(SectorState::Untrimmed),
                  "non-scraped", self.get_histogram_value_formatted(SectorState::Unscraped),
-                 ansi_escapes::EraseEndLine);
+                 ansi_escapes::EraseEndLine,
+                 kw = key_width,
+                 vw = value_width);
 
         let now = Instant::now();
         let elapsed = now.duration_since(self.start).as_secs();
@@ -159,19 +167,23 @@ impl Recover {
             0
         };
 
-        println!("{:>13}: {:19} {:>13}: {:19} {:>13}: {:19}",
+        println!("{:>kw$}: {:vw$} {:>kw$}: {:vw$} {:>kw$}: {:vw$}",
                  "read rate", self.format_rate(good, elapsed),
                  "error rate", self.format_rate(bad, elapsed),
-                 "total rate", self.format_rate(total, elapsed));
+                 "total rate", self.format_rate(total, elapsed),
+                 kw = key_width,
+                 vw = value_width);
 
         let last_success = match self.last_success {
             None => String::from("never"),
             Some(time) => format!("{} ago", self.format_seconds(now.duration_since(time).as_secs())),
         };
-        println!("{:>13}: {:19} {:>13}: {:19} {:>13}: {:19}",
+        println!("{:>kw$}: {:vw$} {:>kw$}: {:vw$} {:>kw$}: {:vw$}",
                  "run time", self.format_seconds(elapsed),
                  "last success", last_success,
-                 "remaining", self.format_seconds(seconds_remaining));
+                 "remaining", self.format_seconds(seconds_remaining),
+                 kw = key_width,
+                 vw = value_width);
     }
 
     fn format_bytes(&self, bytes: u64) -> String {
