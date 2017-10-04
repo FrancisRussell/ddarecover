@@ -1,6 +1,8 @@
-use std::path::Path;
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::cmp;
 use std::fs::{File, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::ops::Range;
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct OutFile {
@@ -40,6 +42,24 @@ impl OutFile {
     pub fn sync(&mut self) -> io::Result<()> {
         self.file.flush()?;
         self.file.sync_all()
+    }
+
+    pub fn is_range_zero(&mut self, range: Range<u64>) -> io::Result<bool> {
+        let mut data = vec![0u8; 65536];
+        self.seek(SeekFrom::Start(range.start))?;
+        let mut remaining = range.end - range.start;
+        while remaining > 0 {
+            let read_size = cmp::min(remaining, data.len() as u64);
+            let data = &mut data[0..read_size as usize];
+            self.read_exact(&mut data[..])?;
+            for value in &data[..] {
+                if *value != 0 {
+                    return Ok(false);
+                }
+            }
+            remaining -= read_size;
+        }
+        Ok(true)
     }
 }
 
