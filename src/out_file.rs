@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::io::{self, Write, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::fs::{File, OpenOptions};
 
 #[derive(Debug)]
@@ -12,12 +12,14 @@ impl OutFile {
         let file = if !path.exists() {
             let file = OpenOptions::new()
                 .create_new(true)
+                .read(true)
                 .write(true)
                 .open(path)?;
             file.set_len(size_bytes)?;
             file
         } else {
             OpenOptions::new()
+                .read(true)
                 .write(true)
                 .create(false)
                 .truncate(false)
@@ -38,6 +40,12 @@ impl OutFile {
     pub fn sync(&mut self) -> io::Result<()> {
         self.file.flush()?;
         self.file.sync_all()
+    }
+}
+
+impl Read for OutFile {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        self.file.read(buf)
     }
 }
 
